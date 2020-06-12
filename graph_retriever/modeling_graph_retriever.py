@@ -152,7 +152,7 @@ class BertForGraphRetriever(BertPreTrainedModel):
         init_paragraphs, state = self.encode(input_ids, token_type_ids, attention_mask, split_chunk = split_chunk)
 
         # Output matrix to be populated
-        ps = torch.FloatTensor(N+1, self.s.size(0)).zero_().to(self.s.device) # (N+1, D)
+        ps = torch.zeros((N+1, self.s.size(0)), dtype=torch.float16).to(self.s.device) # (N+1, D)
         
         for i in range(B):
             init_context_len = len(examples[i].context)
@@ -167,7 +167,7 @@ class BertForGraphRetriever(BertPreTrainedModel):
 
             state_ = state[i:i+1] # (1, 1, D)
             state_ = state_.expand(beam, 1, state_.size(2)) # -> (beam, 1, D)
-            state_tmp = torch.FloatTensor(state_.size()).zero_().to(state_.device)
+            state_tmp = torch.zeros_like(state_)
 
             for j in range(self.graph_retriever_config.max_select_num):
                 if j > 0:
@@ -226,7 +226,7 @@ class BertForGraphRetriever(BertPreTrainedModel):
                         input_ids = torch.LongTensor([input_ids]).to(ps.device)
                         token_type_ids = torch.LongTensor([segment_ids]).to(ps.device)
                         attention_mask = torch.LongTensor([input_masks]).to(ps.device)
-                        
+
                         paragraphs, _ = self.encode(input_ids, token_type_ids, attention_mask, split_chunk = split_chunk)
                         paragraphs = paragraphs.squeeze(0)
                         ps[prev_title_size:prev_title_size+len(new_titles)].copy_(paragraphs[:len(new_titles), :])
@@ -273,8 +273,9 @@ class BertForGraphRetriever(BertPreTrainedModel):
 
 
                 score = [p[2] for p in pred_]
-                score = torch.FloatTensor(score)
+                score = torch.tensor(score)
                 score = score.unsqueeze(1).unsqueeze(2) # (beam, 1, 1)
+                output = output.type(torch.float32)
                 score = output * score
                     
                 output = output.squeeze(1) # (beam, N+1)

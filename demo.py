@@ -1,5 +1,6 @@
 import argparse
 import json
+import time
 
 import torch
 
@@ -17,9 +18,10 @@ class DisableLogger():
 
 class ODQA:
     def __init__(self, args):
-        
+        print(args)
+
         self.args = args
-        
+
         device = torch.device("cuda" if torch.cuda.is_available() and not self.args.no_cuda else "cpu")
 
         # TF-IDF Retriever
@@ -37,14 +39,20 @@ class ODQA:
     def predict(self,
                 questions: list):
 
+        t0 = time.clock()
+
         print('-- Retrieving paragraphs by TF-IDF...', flush=True)
         tfidf_retrieval_output = []
         for i in range(len(questions)):
             question = questions[i]
             tfidf_retrieval_output += self.tfidf_retriever.get_abstract_tfidf('DEMO_{}'.format(i), question, self.args)
 
+        print(len(tfidf_retrieval_output[0]['context']), tfidf_retrieval_output[0]['context'].keys())
+
         print('-- Running the graph-based recurrent retriever model...', flush=True)
         graph_retrieval_output = self.graph_retriever.predict(tfidf_retrieval_output, self.tfidf_retriever, self.args)
+
+        print('Time elapsed:', time.clock() - t0)
 
         print('-- Running the reader model...', flush=True)
         answer, title = self.reader.predict(graph_retrieval_output, self.args)
@@ -106,14 +114,14 @@ def main():
                         help="Bert pre-trained model selected in the list: bert-base-uncased, "
                         "bert-large-uncased, bert-base-cased, bert-large-cased, bert-base-multilingual-uncased, "
                         "bert-base-multilingual-cased, bert-base-chinese.")
-    
+
     parser.add_argument("--bert_model_sequential_sentence_selector", default='bert-large-uncased', type=str,
                         help="Bert pre-trained model selected in the list: bert-base-uncased, "
                         "bert-large-uncased, bert-base-cased, bert-large-cased, bert-base-multilingual-uncased, "
                         "bert-base-multilingual-cased, bert-base-chinese.")
 
     parser.add_argument("--max_seq_length",
-                        default=378,
+                        default=256,
                         type=int,
                         help="The maximum total input sequence length after WordPiece tokenization. \n"
                              "Sequences longer than this will be truncated, and sequences shorter \n"
@@ -125,7 +133,7 @@ def main():
                         help="The maximum total input sequence length after WordPiece tokenization. \n"
                         "Sequences longer than this will be truncated, and sequences shorter \n"
                         "than this will be padded.")
-    
+
     parser.add_argument("--do_lower_case",
                         action='store_true',
                         help="Set this flag if you are using an uncased model.")
@@ -135,23 +143,23 @@ def main():
 
     # RNN graph retriever-specific parameters
     parser.add_argument("--max_para_num",
-                        default=10,
+                        default=1024,
                         type=int)
 
     parser.add_argument('--eval_batch_size',
                         type=int,
-                        default=5,
+                        default=128,
                         help="Eval batch size")
 
     parser.add_argument('--beam_graph_retriever',
                         type=int,
-                        default=1,
+                        default=4,
                         help="Beam size for Graph Retriever")
     parser.add_argument('--beam_sequential_sentence_selector',
                         type=int,
-                        default=1,
+                        default=4,
                         help="Beam size for Sequential Sentence Selector")
-    
+
     parser.add_argument('--min_select_num',
                         type=int,
                         default=1,
@@ -171,14 +179,14 @@ def main():
                         help="Whether to expand links with paragraphs in the same article (for NQ)")
     parser.add_argument('--tfidf_limit',
                         type=int,
-                        default=None,
+                        default=256,
                         help="Whether to limit the number of the initial TF-IDF pool (only for open-domain eval)")
 
-    parser.add_argument("--split_chunk", default=100, type=int,
+    parser.add_argument("--split_chunk", default=128, type=int,
                         help="Chunk size for BERT encoding at inference time")
-    parser.add_argument("--eval_chunk", default=500, type=int,
+    parser.add_argument("--eval_chunk", default=512, type=int,
                         help="Chunk size for inference of graph_retriever")
-    
+
     parser.add_argument("--tagme",
                         action='store_true',
                         help="Whether to use tagme at inference")
@@ -201,8 +209,11 @@ def main():
 
 
     odqa = ODQA(parser.parse_args())
-    
+
     print()
+    # for questions in ["What is distance from earth to sun?", "When the United States declared independence?",
+    #                   "Which football player won european golden shoe in 2016?", "Where John Lennon was born?",
+    #                   "How many copies of albums David Bowie sold?"]:
     while True:
         questions = input('Questions: ')
         questions = questions.strip()
@@ -216,15 +227,15 @@ def main():
 
         if graph_retriever_output is None:
             print()
-            print('Invalid question! "{}"'.format(question))
+            print('Invalid question! "{}"'.format(questions))
             print()
             continue
-        
+
         print()
         print('#### Retrieval results ####')
         print(json.dumps(graph_retriever_output, indent=4))
         print()
-        
+
         print('#### Reader results ####')
         print(json.dumps(reader_output, indent=4))
         print()
@@ -233,7 +244,7 @@ def main():
             print('#### Supporting facts ####')
             print(json.dumps(supporting_facts, indent=4))
             print()
-            
+
 
 if __name__ == "__main__":
     with DisableLogger():

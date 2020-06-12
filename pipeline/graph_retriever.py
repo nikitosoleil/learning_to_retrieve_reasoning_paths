@@ -191,6 +191,10 @@ class GraphRetriever:
         self.model = BertForGraphRetriever.from_pretrained(args.bert_model_graph_retriever, state_dict=model_state_dict, graph_retriever_config = self.graph_retriever_config)
         self.device = device
         self.model.to(self.device)
+
+        from apex import amp
+        self.model = amp.initialize(self.model, None, opt_level="O3")
+
         self.model.eval()
         print('Done!', flush=True)
 
@@ -242,6 +246,8 @@ class GraphRetriever:
                 output_masks = output_masks.to(self.device)
 
                 examples = [eval_examples[eval_start_index+ex_indices[i].item()] for i in range(input_ids.size(0))]
+
+                print(input_ids.shape, segment_ids.shape, input_masks.shape, args.split_chunk)
 
                 with torch.no_grad():
                     pred, prob, topk_pred, topk_prob = self.model.beam_search(input_ids, segment_ids, input_masks, examples = examples, tokenizer = self.tokenizer, retriever = retriever, split_chunk = args.split_chunk)
